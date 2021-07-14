@@ -103,6 +103,7 @@ class ViewTileFitter:
     def __init__(self, root, config):
         self.root = root
         self.config = config
+        self.thread = None
         self.__view_tile_fitter_settings()
         self.__view_image_preview()
 
@@ -153,6 +154,10 @@ class ViewTileFitter:
                                                                                           pady=5)
 
     def __create_mosaic(self):
+        if self.thread:
+            if self.thread.is_alive():
+                logger.warning('I am processing mosaic please wait')
+                return
         overlay_image_path = self.txtOverlayImagePath["text"]
         database_file = self.txtDatabasePath['text']
         tile_multiplier = int(self.txtTileMultiplier.get())
@@ -172,11 +177,23 @@ class ViewTileFitter:
         tf = Mosaic.TileFitter(overlay_image_path=overlay_image_path, database_file=database_file,
                                output_file_path=output_file_path, tile_multiplier=tile_multiplier,
                                overlay_alpha=overlay_alpha, dpi=dpi)
-        thread = threading.Thread(target=tf.run)
-        thread.start()
+        self.thread = threading.Thread(target=tf.run)
+        self.thread.start()
 
     def __show_mosaic(self):
-        self.canvas.init(self.config['output_file_path'])
+        if self.thread:
+            if self.thread.is_alive():
+                logging.warning('Please wait until mosaic has been created')
+            else:
+                logging.info('Show image')
+                t = threading.Thread(target=self.canvas.init, args=(self.config['output_file_path'], ))
+                t.start()
+        elif os.path.isfile(self.config['output_file_path']):
+                logging.info('Show image')
+                t = threading.Thread(target=self.canvas.init, args=(self.config['output_file_path'], ))
+                t.start()
+        else:
+            logging.warning('No image exist. Please create mosaic first.')
 
     def __save_as_mosaic(self):
         filepath = asksaveasfilename(filetypes=(("Image files", "*.jpg"), ("All files", "*.*")))

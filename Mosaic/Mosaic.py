@@ -208,11 +208,11 @@ class TileFitter:
                 tile_img = files[img_idx % len(db_rgb)][1]['image']
                 out.paste(tile_img, (row_px, col_px))
 
-            logging.info(f"Overlay image with alpha of {self.overlay_alpha*100}%")
+            logging.info(f'Overlay image with alpha of {self.overlay_alpha*100}%')
             out = Image.blend(out, overlay_img, self.overlay_alpha)
-            logging.info(f"Save image under {self.output_file_path}")
+            logging.info(f'Save image under "{self.output_file_path}"')
             out.save(self.output_file_path, dpi=(self.dpi, self.dpi))
-            logging.info(f"Finished")
+            logging.info('Finished')
         else:
             logging.error('Overlay Image can not be processed or database is corrupt')
 
@@ -221,14 +221,14 @@ class TileFitter:
         len_db = db_rgb.shape[0]
 
         if len_temp > len_db:
-            logging.warning(f"Not enough images in database. {len_db} exist but {len_temp} needed. Lets repeat some images.")
+            logging.warning(f'Not enough images in database. {len_db} exist but {len_temp} needed. Lets repeat some images.')
             # we have less images in db than tiles repeat database images to reach tile count
             multiplier = math.ceil(len_temp / len_db)
             db_rgb = np.stack([db_rgb for _ in range(multiplier)], axis=0).reshape(
                 (db_rgb.shape[0] * multiplier, db_rgb.shape[1]))
         shape_cost_matrix = (template.shape[0], db_rgb.shape[0])
         cost_matrix = np.zeros(shape_cost_matrix)
-        logging.info(f"Create cost matrix with shape {shape_cost_matrix}")
+        logging.info(f'Create cost matrix with shape {shape_cost_matrix}')
         for idx in range(template.shape[0]):
             single_cost = np.sum((template[idx] - db_rgb) ** 2, axis=1)
             cost_matrix[idx] = single_cost

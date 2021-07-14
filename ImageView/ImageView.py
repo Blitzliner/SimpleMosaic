@@ -70,7 +70,7 @@ class CanvasImage:
         self.container = self.canvas.create_rectangle((0, 0, 10, 10), width=0)
 
     def init(self, path):
-        logger.info(f'Init image preview {path}')
+        logger.info(f'Init image preview for "{path}"')
         self.__delta = 1.3  # zoom magnitude
         self.__previous_state = 0  # previous state of the keyboard
         self.path = path  # path to the image, should be public for outer classes
@@ -89,10 +89,10 @@ class CanvasImage:
         self.__scale = self.imscale * self.__ratio  # image pyramide scale
         w, h = self.__pyramid[-1].size
         while w > 512 and h > 512:  # top pyramid image is around 512 pixels in size
-            w /= self.__reduction  # divide on reduction degree
-            h /= self.__reduction  # divide on reduction degree
-            logger.info(f'Preparation of Image Pyramid: reduce to {w} {h}')
-            self.__pyramid.append(self.__pyramid[-1].resize((int(w), int(h)), self.__filter))
+            w = w // self.__reduction  # divide on reduction degree
+            h = h // self.__reduction  # divide on reduction degree
+            logger.info(f'Image pyramid: Reduce to {w}x{h}')
+            self.__pyramid.append(self.__pyramid[-1].resize((w, h), self.__filter))
 
         # Put image into container rectangle and use it to set proper coordinates to the image
         fitted_width = self.imwidth * self.__scale
