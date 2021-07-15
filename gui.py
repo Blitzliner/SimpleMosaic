@@ -10,6 +10,7 @@ import logging
 import queue
 import json
 import threading
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class ViewDatabase:
     def __init__(self, root, config):
         self.root = root
         self.config = config
+        self.tread = None
         self.ratio_list = {'1:1 (1.0)': 1, '5:4 (1.25)': 5 / 4, '4:3 (1.333)': 4 / 3, '3:2 (1.5)': 3 / 2,
                            '16:10 (1.6)': 16 / 10, '5:3 (1.667)': 5 / 3, '16:9 (1.778)': 16 / 9}
         self.__view_database_settings()
@@ -34,7 +36,7 @@ class ViewDatabase:
     def __view_database_settings(self):
         frame = tk.LabelFrame(self.root, text="Database Settings")
         frame.grid(row=0, column=0, pady=5, padx=5, sticky='ewn')
-        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(0, weight=0, minsize=100)
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=0)
         # select image directory
@@ -88,8 +90,11 @@ class ViewDatabase:
         tdb = Mosaic.TileDatabase(image_dir=image_dir, database_file=database_file,
                                   tile_size_ratio=self.ratio_list[tile_size_ratio_key],
                                   tile_max_width=tile_max_width)
-        thread = threading.Thread(target=tdb.create)
-        thread.start()
+        if self.tread and self.tread.is_alive():
+            logger.warning('Please wait until database has been created')
+        else:
+            self.thread = threading.Thread(target=tdb.create)
+            self.thread.start()
 
         self.config['width'] = self.root.winfo_width()
         self.config['height'] = self.root.winfo_height()
@@ -104,16 +109,18 @@ class ViewTileFitter:
         self.root = root
         self.config = config
         self.thread = None
+        self.tf = None
         self.__view_tile_fitter_settings()
+        self.__view_image_settings()
         self.__view_image_preview()
 
     def get_settings(self):
         return self.config
 
     def __view_tile_fitter_settings(self):
-        frame = tk.LabelFrame(self.root, text="Mosaic Settings")
+        frame = tk.LabelFrame(self.root, text="Mosaic Fitter")
         frame.grid(row=1, column=0, pady=5, padx=5, sticky='ewn')
-        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(0, weight=0, minsize=100)
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=0)
         # select database
@@ -133,67 +140,103 @@ class ViewTileFitter:
         self.txtTileMultiplier = tk.Entry(frame)
         self.txtTileMultiplier.insert(0, self.config['tile_multiplier'])
         self.txtTileMultiplier.grid(row=2, column=1, sticky='ew')
-        # dpi
-        tk.Label(frame, text="Image Resolution", anchor='w').grid(row=3, column=0, sticky='w', padx=5, pady=5)
-        self.txtDpi = tk.Entry(frame)
-        self.txtDpi.insert(0, self.config['dpi'])
-        tk.Label(frame, text="dpi").grid(row=3, column=2, sticky='w', padx=5)
-        self.txtDpi.grid(row=3, column=1, sticky='ew')
-        # overlay
-        tk.Label(frame, text="Overlay", anchor='w').grid(row=4, column=0, sticky='w', padx=5, pady=5)
-        self.txtOverlayAlpha = tk.Entry(frame)
-        self.txtOverlayAlpha.insert(0, self.config['overlay_alpha'] * 100)
-        tk.Label(frame, text='%').grid(row=4, column=2, sticky='w', padx=5)
-        self.txtOverlayAlpha.grid(row=4, column=1, sticky='ew')
         # button to export/display image
         btn_frame = tk.Frame(frame)
         btn_frame.grid(row=5, column=0, columnspan=3)
-        tk.Button(btn_frame, text="Run", padx=10, command=self.__create_mosaic).grid(row=0, column=0, padx=5, pady=5)
-        tk.Button(btn_frame, text="Show", padx=10, command=self.__show_mosaic).grid(row=0, column=1, padx=5, pady=5)
+        tk.Button(btn_frame, text="Run Fitter", padx=10, command=self.__create_mosaic).grid(row=0, column=0, padx=5, pady=5)
+        tk.Button(btn_frame, text="Show", padx=10, command=self.__show_fitter_result).grid(row=0, column=1, padx=5, pady=5)
+
+    def __view_image_settings(self):
+        frame = tk.LabelFrame(self.root, text="Image Settings")
+        frame.grid(row=2, column=0, pady=5, padx=5, sticky='ewn')
+        frame.columnconfigure(0, weight=0, minsize=100)
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=0)
+        # dpi
+        tk.Label(frame, text="Resolution", anchor='w').grid(row=0, column=0, sticky='w', padx=5, pady=5)
+        self.txtDpi = tk.Entry(frame)
+        self.txtDpi.insert(0, self.config['dpi'])
+        tk.Label(frame, text="dpi").grid(row=0, column=2, sticky='w', padx=5)
+        self.txtDpi.grid(row=0, column=1, sticky='ew')
+        # overlay
+        tk.Label(frame, text="Overlay", anchor='w').grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        self.txtOverlayAlpha = tk.Entry(frame)
+        self.txtOverlayAlpha.insert(0, self.config['overlay_alpha'] * 100)
+        tk.Label(frame, text='%').grid(row=1, column=2, sticky='w', padx=5)
+        self.txtOverlayAlpha.grid(row=1, column=1, sticky='ew')
+        # button to export/display image
+        btn_frame = tk.Frame(frame)
+        btn_frame.grid(row=5, column=0, columnspan=3)
+        #tk.Button(btn_frame, text="Run", padx=10, command=self.__create_mosaic).grid(row=0, column=0, padx=5, pady=5)
+        tk.Button(btn_frame, text="Update", padx=10, command=self.__update_mosaic).grid(row=0, column=1, padx=5, pady=5)
         tk.Button(btn_frame, text="Save as", padx=10, command=self.__save_as_mosaic).grid(row=0, column=2, padx=5,
                                                                                           pady=5)
 
     def __create_mosaic(self):
         if self.thread:
             if self.thread.is_alive():
-                logger.warning('I am processing mosaic please wait')
+                logger.warning('Please wait until mosaic has been created')
                 return
-        overlay_image_path = self.txtOverlayImagePath["text"]
-        database_file = self.txtDatabasePath['text']
-        tile_multiplier = int(self.txtTileMultiplier.get())
-        dpi = int(self.txtDpi.get())
-        overlay_alpha = float(self.txtOverlayAlpha.get()) / 100
-        output_file_path = self.config['output_file_path']
-
+        self.config['overlay_image_path'] = self.txtOverlayImagePath["text"]
+        self.config['database_file'] = self.txtDatabasePath['text']
+        self.config['tile_multiplier'] = int(self.txtTileMultiplier.get())
         self.config['width'] = self.root.winfo_width()
         self.config['height'] = self.root.winfo_height()
-        self.config['database_file'] = database_file
-        self.config['overlay_image_path'] = overlay_image_path
-        self.config['tile_multiplier'] = tile_multiplier
-        self.config['overlay_alpha'] = overlay_alpha
-        self.config['dpi'] = dpi
-        self.config['output_file_path'] = output_file_path
 
-        tf = Mosaic.TileFitter(overlay_image_path=overlay_image_path, database_file=database_file,
-                               output_file_path=output_file_path, tile_multiplier=tile_multiplier,
-                               overlay_alpha=overlay_alpha, dpi=dpi)
-        self.thread = threading.Thread(target=tf.run)
+        self.tf = Mosaic.TileFitter(overlay_image_path=self.config['overlay_image_path'], database_file=self.config['database_file'],
+                               output_file_path=self.config['fitter_out_file'], tile_multiplier=self.config['tile_multiplier'],
+                               overlay_alpha=0.0, dpi=300)
+        self.thread = threading.Thread(target=self.tf.run)
         self.thread.start()
 
-    def __show_mosaic(self):
+    def __show_image(self, path):
         if self.thread:
             if self.thread.is_alive():
                 logging.warning('Please wait until mosaic has been created')
             else:
                 logging.info('Show image')
-                t = threading.Thread(target=self.canvas.init, args=(self.config['output_file_path'], ))
+                t = threading.Thread(target=self.canvas.init, args=(path, ))
                 t.start()
-        elif os.path.isfile(self.config['output_file_path']):
+        elif os.path.isfile(path):
                 logging.info('Show image')
-                t = threading.Thread(target=self.canvas.init, args=(self.config['output_file_path'], ))
+                t = threading.Thread(target=self.canvas.init, args=(path, ))
                 t.start()
         else:
             logging.warning('No image exist. Please create mosaic first.')
+
+    def __show_fitter_result(self):
+        self.__show_image(self.config['fitter_out_file'])
+
+    def __update_mosaic(self):
+        try:
+            self.config['dpi'] = int(self.txtDpi.get())
+        except:
+            logging.error(f'Wrong data format only integer are allowed: {self.txtDpi.get()}')
+            return
+        try:
+            self.config['overlay_alpha'] = float(self.txtOverlayAlpha.get()) / 100
+        except:
+            logging.error(f'Wrong data format only float are allowed: {self.txtDpi.get()}')
+            return
+        if self.config['overlay_alpha'] < 0 or self.config['overlay_alpha'] > 1:
+            logging.error(f'Provided alpha "{self.config["overlay_alpha"]}" but allowed range is between 0.0 and 1.0')
+            return False
+        if self.config['dpi'] < 30 or self.config['dpi'] > 600:
+            logging.error(f'Provided dpi "{self.config["dpi"]}" but allowed range is between 30 and 600')
+            return False
+
+        if os.path.isfile(self.config['fitter_out_file']):
+            if self.tf:
+                overlay = self.tf.get_overlay()
+                img = Image.open(self.config['fitter_out_file'])
+                logger.info('Create overlay with {self.config["overlay_alpha"]}')
+                new_image = Image.blend(img, overlay, self.config['overlay_alpha'])
+                new_image.save(self.config['overlay_out_file'], dpi=(self.config['dpi'], self.config['dpi']))
+                self.__show_image(self.config['overlay_out_file'])
+            else:
+                logger.warning('Please run fitter first')
+        else:
+            logger.error(f'Image does not exist under {self.config["fitter_out_file"]}. Please run fitter first')
 
     def __save_as_mosaic(self):
         filepath = asksaveasfilename(filetypes=(("Image files", "*.jpg"), ("All files", "*.*")))
@@ -204,7 +247,7 @@ class ViewTileFitter:
             logging.warning('No valid image extension found. I add ".jpg" for you.')
             filepath += '.jpg'
 
-        temp_file = self.config['output_file_path']
+        temp_file = self.config['fitter_out_file']
         if os.path.isfile(temp_file):
             shutil.copy2(temp_file, filepath)
             logger.info(f'File is saved under {filepath}')
@@ -225,11 +268,11 @@ class ViewTileFitter:
 
     def __view_image_preview(self):
         self.image_frame = tk.LabelFrame(self.root, text="Mosaic Preview")
-        self.image_frame.grid(row=0, column=1, rowspan=2, pady=5, padx=5, sticky='ewns')
-        self.image_frame.rowconfigure(0, weight=1)  # make the CanvasImage widget expandable
+        self.image_frame.grid(row=0, column=1, rowspan=3, pady=5, padx=5, sticky='ewns')
+        self.image_frame.rowconfigure(0, weight=1)
         self.image_frame.columnconfigure(0, weight=1)
-        self.canvas = ImageView.CanvasImage(self.image_frame)  # create widget
-        self.canvas.grid(row=0, column=0)  # show widget
+        self.canvas = ImageView.CanvasImage(self.image_frame)
+        self.canvas.grid(row=0, column=0)
 
 
 class ViewConsole:
@@ -245,8 +288,7 @@ class ViewConsole:
                 break
             else:
                 self.__display(record)
-        self.root.after(100,
-                        self.__poll_log_queue)  # Check every 100ms if there is a new message in the queue to display
+        self.root.after(100, self.__poll_log_queue)  # Check every 100ms if there is a new message in the queue
 
     def __display(self, record):
         msg = self.queue_handler.format(record)
@@ -257,7 +299,7 @@ class ViewConsole:
 
     def __view_console(self):
         self.console = ScrolledText(self.root, state='disabled')
-        self.console.grid(row=2, column=0, columnspan=2, sticky='nesw', padx=5, pady=5)
+        self.console.grid(row=3, column=0, columnspan=2, sticky='nesw', padx=5, pady=5)
         self.console.configure(font='TkFixedFont')
         self.console.tag_config('INFO', foreground='black')
         self.console.tag_config('DEBUG', foreground='gray')
@@ -282,7 +324,6 @@ class App:
         self.view_database = ViewDatabase(self.root, self.config)
         self.view_tile_fitter = ViewTileFitter(self.root, self.config)
         self.view_console = ViewConsole(self.root)
-        # self.__view_image_preview(self.root)
 
     def save_settings(self):
         self.config = {**self.config, **self.view_database.get_settings()}
@@ -298,7 +339,7 @@ class App:
             # load default config
             return {'width': 800, 'height': 500, 'image_dir': 'Please select directory',
                     'tile_size_ratio': '4:3 (1.333)',
-                    'tile_multiplie': 50, 'dpi': 150, 'tile_max_width': 250, 'output_file_path': '_temp.jpg',
+                    'tile_multiplie': 50, 'dpi': 150, 'tile_max_width': 250, 'fitter_out_file': '_temp.jpg',
                     'database_file': 'database.p', 'overlay_alpha': 0.03, 'overlay_image_path': 'Please select image'}
 
     def __init_main_window(self):
@@ -313,7 +354,8 @@ class App:
         self.root.resizable(width=True, height=True)
         self.root.rowconfigure(0, weight=0)
         self.root.rowconfigure(1, weight=0)
-        self.root.rowconfigure(2, weight=1)
+        self.root.rowconfigure(2, weight=0)
+        self.root.rowconfigure(3, weight=1)
         self.root.grid_columnconfigure(0, weight=0)
         self.root.grid_columnconfigure(1, weight=1)
 

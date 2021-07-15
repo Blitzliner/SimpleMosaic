@@ -221,9 +221,10 @@ class TileFitter:
         len_db = db_rgb.shape[0]
 
         if len_temp > len_db:
-            logging.warning(f'Not enough images in database. {len_db} exist but {len_temp} needed. Lets repeat some images.')
+            logging.warning(f'Not enough images in database. {len_db} exist but {len_temp} needed')
             # we have less images in db than tiles repeat database images to reach tile count
             multiplier = math.ceil(len_temp / len_db)
+            logging.info(f'Images are repeated by a factor of {multiplier}')
             db_rgb = np.stack([db_rgb for _ in range(multiplier)], axis=0).reshape(
                 (db_rgb.shape[0] * multiplier, db_rgb.shape[1]))
         shape_cost_matrix = (template.shape[0], db_rgb.shape[0])
@@ -271,3 +272,6 @@ class TileFitter:
             return img.convert('RGB').crop((0, 0, w_target, h_target))
         else:
             logging.error(f'Invalid overlay image path given: {self.overlay_image_path}')
+
+    def get_overlay(self):
+        return self.__prepare_overlay_size()
