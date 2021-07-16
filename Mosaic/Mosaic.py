@@ -191,23 +191,57 @@ class TileFitter:
         self.__load_data()
         overlay_img = self.__prepare_overlay_size()
         if overlay_img is not None and self.db is not None:
+            if self.tile_multiplier > 60:
+                logger.warning('Processing could take a while or reduce tile multiplier!')
             db_rgb = TileDatabase.db_to_rgb_array(self.db)
             template = self.__get_tile_template(overlay_img)
-            cost = self.__calc_error_matrix(template, db_rgb)
-            logging.info(f"Run linear sum assignment problem")
-            row_ind, col_ind = linear_sum_assignment(cost)
+            # split up into different jobs
+            len_temp = template.shape[0]
+            len_db = db_rgb.shape[0]
+            multiplier = math.ceil(len_temp / len_db)
+            # method 1: increase database to same size of needed tile images
+            if True:
+                if multiplier > 1:
+                    logging.warning(f'Not enough images in database. {len_db} exist but {len_temp} needed')
+                    logging.info(f'Images are repeated by a factor of {multiplier}')
+                    db_rgb_resized = np.stack([db_rgb for _ in range(multiplier)], axis=0).reshape(
+                        (db_rgb.shape[0] * multiplier, db_rgb.shape[1]))
+                cost = self.__calc_error_matrix(template, db_rgb_resized)
+                logging.info(f"Run linear sum assignment problem")
+                row_ind, col_ind = linear_sum_assignment(cost)
 
-            logging.info(f"Create image with best tiles {(self.tile_multiplier * self.tile_size[0], self.tile_multiplier * self.tile_size[1])}")
-            out = Image.new('RGB', (self.tile_multiplier * self.tile_size[0], self.tile_multiplier * self.tile_size[1]))
-            files = list(self.db['files'].items())
-            for idx, img_idx in zip(row_ind, col_ind):
-                col = idx % self.tile_multiplier
-                row = idx // self.tile_multiplier
-                row_px = col * self.tile_size[0]
-                col_px = row * self.tile_size[1]
-                tile_img = files[img_idx % len(db_rgb)][1]['image']
-                out.paste(tile_img, (row_px, col_px))
+                logging.info(f"Create image with best tiles {(self.tile_multiplier * self.tile_size[0], self.tile_multiplier * self.tile_size[1])}")
+                out = Image.new('RGB', (self.tile_multiplier * self.tile_size[0], self.tile_multiplier * self.tile_size[1]))
+                files = list(self.db['files'].items())
+                for idx, img_idx in zip(row_ind, col_ind):
+                    col = idx % self.tile_multiplier
+                    row = idx // self.tile_multiplier
+                    row_px = col * self.tile_size[0]
+                    col_px = row * self.tile_size[1]
+                    print(len(db_rgb), img_idx, img_idx % len(db_rgb))
+                    tile_img = files[img_idx % len(db_rgb)][1]['image']
+                    out.paste(tile_img, (row_px, col_px))
+            else:
+                # method 2
+                out = Image.new('RGB', (self.tile_multiplier * self.tile_size[0], self.tile_multiplier * self.tile_size[1]))
+                for m in range(multiplier):
+                    start = m*len_db
+                    end = min(start + len_db, len_temp)
+                    sub_template = template[start:end]
+                    print(sub_template.shape)
+                    cost = self.__calc_error_matrix(sub_template, db_rgb)
+                    logging.info(f"Run linear sum assignment problem")
+                    row_ind, col_ind = linear_sum_assignment(cost)
 
+                    files = list(self.db['files'].items())
+                    for idx, img_idx in zip(row_ind, col_ind):
+                        idx = m*len_db + idx
+                        col = idx % self.tile_multiplier
+                        row = idx // self.tile_multiplier
+                        row_px = col * self.tile_size[0]
+                        col_px = row * self.tile_size[1]
+                        tile_img = files[img_idx][1]['image']
+                        out.paste(tile_img, (row_px, col_px))
             logging.info(f'Overlay image with alpha of {self.overlay_alpha*100}%')
             out = Image.blend(out, overlay_img, self.overlay_alpha)
             logging.info(f'Save image under "{self.output_file_path}"')
@@ -217,16 +251,6 @@ class TileFitter:
             logging.error('Overlay Image can not be processed or database is corrupt')
 
     def __calc_error_matrix(self, template, db_rgb):
-        len_temp = template.shape[0]
-        len_db = db_rgb.shape[0]
-
-        if len_temp > len_db:
-            logging.warning(f'Not enough images in database. {len_db} exist but {len_temp} needed')
-            # we have less images in db than tiles repeat database images to reach tile count
-            multiplier = math.ceil(len_temp / len_db)
-            logging.info(f'Images are repeated by a factor of {multiplier}')
-            db_rgb = np.stack([db_rgb for _ in range(multiplier)], axis=0).reshape(
-                (db_rgb.shape[0] * multiplier, db_rgb.shape[1]))
         shape_cost_matrix = (template.shape[0], db_rgb.shape[0])
         cost_matrix = np.zeros(shape_cost_matrix)
         logging.info(f'Create cost matrix with shape {shape_cost_matrix}')

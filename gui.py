@@ -64,9 +64,7 @@ class ViewDatabase:
         # create database button
         btn_frame = tk.Frame(frame)
         btn_frame.grid(row=5, column=0, columnspan=3)
-        tk.Button(btn_frame, text="Create/Update Database", padx=10, command=self.__create_database).grid(row=0,
-                                                                                                          column=0,
-                                                                                                          pady=5)
+        tk.Button(btn_frame, text="Create/Update", padx=10, command=self.__create_database).grid(row=0, column=0, pady=5)
 
     def get_settings(self):
         return self.config
@@ -164,11 +162,24 @@ class ViewTileFitter:
         self.txtOverlayAlpha.insert(0, self.config['overlay_alpha'] * 100)
         tk.Label(frame, text='%').grid(row=1, column=2, sticky='w', padx=5)
         self.txtOverlayAlpha.grid(row=1, column=1, sticky='ew')
+        # checkbox for advanced settings
+        cb_frame = tk.Frame(frame)
+        cb_frame.grid(row=2, column=0, columnspan=3)
+
+        self.cbGrayScale = ttk.Checkbutton(cb_frame, text='Grayscale')
+        print(self.cbGrayScale.state(['selected']))
+        self.cbGrayScale.state(['!alternate'])
+        if self.config['greyscale_active']:
+            self.cbGrayScale.state(['selected'])
+        else:
+            self.cbGrayScale.state(['!selected'])
+        self.cbGrayScale.grid(row=0, column=0, sticky='w', padx=5, pady=5)
+
         # button to export/display image
         btn_frame = tk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=3)
+        btn_frame.grid(row=3, column=0, columnspan=3)
         #tk.Button(btn_frame, text="Run", padx=10, command=self.__create_mosaic).grid(row=0, column=0, padx=5, pady=5)
-        tk.Button(btn_frame, text="Update", padx=10, command=self.__update_mosaic).grid(row=0, column=1, padx=5, pady=5)
+        tk.Button(btn_frame, text="Apply", padx=10, command=self.__update_mosaic).grid(row=0, column=1, padx=5, pady=5)
         tk.Button(btn_frame, text="Save as", padx=10, command=self.__save_as_mosaic).grid(row=0, column=2, padx=5,
                                                                                           pady=5)
 
@@ -225,11 +236,20 @@ class ViewTileFitter:
             logging.error(f'Provided dpi "{self.config["dpi"]}" but allowed range is between 30 and 600')
             return False
 
+        self.config['grayscale_active'] = self.cbGrayScale.instate(['selected'])
+
         if os.path.isfile(self.config['fitter_out_file']):
             if self.tf:
                 overlay = self.tf.get_overlay()
                 img = Image.open(self.config['fitter_out_file'])
-                logger.info('Create overlay with {self.config["overlay_alpha"]}')
+                if self.config['grayscale_active']:
+                    overlay = overlay.convert('L')
+                    img = img.convert('L')
+                logger.info(f'Create overlay with {self.config["overlay_alpha"]}')
+                w, h = img.size
+                w_cm = int(w/self.config['dpi']*2.54)
+                h_cm = int(h/self.config['dpi']*2.54)
+                logger.info(f'Image can be printed with {self.config["dpi"]} dpi in size of {w_cm}x{h_cm} cm')
                 new_image = Image.blend(img, overlay, self.config['overlay_alpha'])
                 new_image.save(self.config['overlay_out_file'], dpi=(self.config['dpi'], self.config['dpi']))
                 self.__show_image(self.config['overlay_out_file'])
@@ -336,11 +356,13 @@ class App:
             with open(self.default_config_path, 'r') as file:
                 return json.load(file)
         else:
+            logger.warning('No settings file found. Empty one with default values is created')
             # load default config
-            return {'width': 800, 'height': 500, 'image_dir': 'Please select directory',
+            return {'width': 800, 'height': 600, 'image_dir': 'Please select directory',
                     'tile_size_ratio': '4:3 (1.333)',
-                    'tile_multiplie': 50, 'dpi': 150, 'tile_max_width': 250, 'fitter_out_file': '_temp.jpg',
-                    'database_file': 'database.p', 'overlay_alpha': 0.03, 'overlay_image_path': 'Please select image'}
+                    'tile_multiplier': 50, 'dpi': 150, 'tile_max_width': 250, 'fitter_out_file': '_temp.jpg',
+                    'database_file': 'database.p', 'overlay_alpha': 0.03, 'overlay_image_path': 'Please select image',
+                    'greyscale_active': False, 'overlay_out_file': '_tempOverlay.jpg'}
 
     def __init_main_window(self):
         self.root.title("MosaicMaker v0.1")
