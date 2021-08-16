@@ -101,6 +101,7 @@ class CanvasImage:
         off_y = (self.placeholder.winfo_height() - fitted_height) / 2
         self.container = self.canvas.create_rectangle((off_x, off_y, fitted_width + off_x, fitted_height + off_y),
                                                       width=0)
+        logger.info('Show image')
         self.__show_image()  # show image on the canvas
         self.canvas.focus_set()  # set focus on the canvas
 
@@ -184,6 +185,8 @@ class CanvasImage:
             return True  # point (x,y) is outside the image area
 
     def __wheel(self, event):
+        if self.path is None:
+            return
         """ Zoom with mouse wheel """
         x = self.canvas.canvasx(event.x)  # get coordinates of the event on the canvas
         y = self.canvas.canvasy(event.y)
