@@ -2,9 +2,10 @@ import tkinter as tk
 from tkinter.filedialog import askdirectory, asksaveasfilename, askopenfilename
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
-from Mosaic import Mosaic
-from ImageView import ImageView
-from ScrolledWindow import ScrolledWindow
+from tile.database import TileDatabase
+from tile.fitter import TileFitter
+from gui import ImageView
+from gui import ScrolledWindow
 import os
 import shutil
 import logging
@@ -12,6 +13,7 @@ import queue
 import json
 import threading
 from PIL import Image
+from config import ImageAspectRatio
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +32,19 @@ class ViewDatabase:
         self.root = root
         self.config = config
         self.tread = None
-        self.ratio_list = {
-            '1:1 (1.0)': 1,
-            '5:4 (1.25)': 5 / 4,
-            '4:3 (1.333)': 4 / 3,
-            '3:2 (1.5)': 3 / 2,
-            '16:10 (1.6)': 16 / 10,
-            '5:3 (1.667)': 5 / 3,
-            '16:9 (1.778)': 16 / 9,
-        }
-        self.__view_database_settings()
+        # self.aspect_ratio = ImageAspectRatio.list()
+        # self.ratio_list = {
+        #     '1:1 (1.0)': 1,
+        #     '5:4 (1.25)': 5 / 4,
+        #     '4:3 (1.33)': 4 / 3,
+        #     '3:2 (1.5)': 3 / 2,
+        #     '16:10 (1.6)': 16 / 10,
+        #     '5:3 (1.66)': 5 / 3,
+        #     '16:9 (1.78)': 16 / 9,
+        # }
+        self._view_database_settings()
 
-    def __view_database_settings(self):
+    def _view_database_settings(self):
         frame = tk.LabelFrame(self.root, text='Database Settings')
         frame.grid(row=0, column=0, pady=5, padx=5, sticky='enw')
         frame.columnconfigure(0, weight=0, minsize=100)
@@ -51,17 +54,17 @@ class ViewDatabase:
         tk.Label(frame, text='Image directory', anchor='w').grid(row=0, column=0, sticky='w', padx=5, pady=5)
         self.txtInputImageDir = tk.Label(frame, width=25, text=self.config['image_dir'], anchor='e')
         self.txtInputImageDir.grid(row=0, column=1, sticky='ew')
-        tk.Button(frame, text='...', padx=5, command=self.__btn_select_image_dir).grid(
+        tk.Button(frame, text='...', padx=5, command=self._btn_select_image_dir).grid(
             row=0, column=2, sticky='w', padx=5
         )
         # tile ratio
         tk.Label(frame, text='Tile aspect ratio', anchor='w').grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        value_list = list(self.ratio_list.keys())
+        value_list = ImageAspectRatio.list() # list(self.ratio_list.keys())
         self.txtTileRatio = ttk.Combobox(frame, values=value_list)
-        self.txtTileRatio.current(value_list.index(self.config['tile_size_ratio']))
+        self.txtTileRatio.current(value_list.index(self.config['tile_aspect_ratio']))
         self.txtTileRatio.grid(row=2, column=1, sticky='ew')
         # tile width
-        tk.Label(frame, text='Tile size', anchor='w').grid(row=3, column=0, sticky='w', padx=5, pady=5)
+        tk.Label(frame, text='Tile width', anchor='w').grid(row=3, column=0, sticky='w', padx=5, pady=5)
         self.txtTileSize = tk.Entry(frame)
         self.txtTileSize.insert(0, self.config['tile_max_width'])
         tk.Label(frame, text='px').grid(row=3, column=2, sticky='w', padx=5)
@@ -70,23 +73,23 @@ class ViewDatabase:
         tk.Label(frame, text='Database file', anchor='w').grid(row=4, column=0, sticky='w', padx=5, pady=5)
         self.txtDatabaseFile = tk.Label(frame, width=25, text=self.config['database_file'], anchor='e')
         self.txtDatabaseFile.grid(row=4, column=1, sticky='ew')
-        tk.Button(frame, text='...', padx=5, command=self.__btn_select_database).grid(
+        tk.Button(frame, text='...', padx=5, command=self._btn_select_database).grid(
             row=4, column=2, sticky='w', padx=5
         )
         # create database button
         btn_frame = tk.Frame(frame)
         btn_frame.grid(row=5, column=0, columnspan=3)
-        tk.Button(btn_frame, text='Create', padx=10, command=self.__btn_create_database).grid(row=0, column=0, pady=5)
+        tk.Button(btn_frame, text='Create', padx=10, command=self._btn_create_database).grid(row=0, column=0, pady=5)
 
     def get_settings(self):
         return self.config
 
-    def __btn_select_image_dir(self):
+    def _btn_select_image_dir(self):
         selected_path = askdirectory(initialdir=self.config['image_dir'])
         if len(selected_path):
             self.txtInputImageDir['text'] = selected_path
 
-    def __btn_select_database(self):
+    def _btn_select_database(self):
         selected_path = asksaveasfilename(
             initialdir=self.config['database_file'],
             filetypes=(('Database files', '*.p'), ('All files', '*.*')),
@@ -94,27 +97,27 @@ class ViewDatabase:
         if len(selected_path):
             self.txtDatabaseFile['text'] = selected_path
 
-    def __btn_create_database(self):
-        image_dir = self.txtInputImageDir['text']
-        tile_max_width = int(self.txtTileSize.get())
-        tile_size_ratio_key = self.txtTileRatio.get()
-        database_file = self.txtDatabaseFile['text']
-        tdb = Mosaic.TileDatabase(
-            image_dir=image_dir,
-            database_file=database_file,
-            tile_size_ratio=self.ratio_list[tile_size_ratio_key],
-            tile_max_width=tile_max_width,
-        )
+    def _btn_create_database(self):
+        tile_dir = self.txtInputImageDir['text']
+        tile_width = int(self.txtTileSize.get())
+        tile_aspect_ratio_key = self.txtTileRatio.get()
+        database_path = self.txtDatabaseFile['text']
+        
+        tdb = TileDatabase(tile_dir=tile_dir,
+                           database_path=database_path,
+                           tile_ratio=ImageAspectRatio.from_string(tile_aspect_ratio_key).to_float(),
+                           tile_width=tile_width)
+
         if self.tread and self.tread.is_alive():
             logger.warning('Please wait until database has been created')
         else:
             self.thread = threading.Thread(target=tdb.create)
             self.thread.start()
 
-        self.config['image_dir'] = image_dir
-        self.config['tile_max_width'] = tile_max_width
-        self.config['tile_size_ratio'] = tile_size_ratio_key
-        self.config['database_file'] = database_file
+        self.config['image_dir'] = tile_dir
+        self.config['tile_max_width'] = tile_width
+        self.config['tile_aspect_ratio'] = tile_aspect_ratio_key
+        self.config['database_file'] = database_path
 
 
 class ViewTileFitter:
@@ -122,47 +125,65 @@ class ViewTileFitter:
         self.config = config
         self.thread = None
         self.tf = None
-        self.__view_tile_fitter_settings(settings_frame)
-        self.__view_image_settings(settings_frame)
-        self.__view_image_preview(root)
+        self._view_fitter_settings(settings_frame)
+        self._view_image_settings(settings_frame)
+        self._view_image_preview(root)
 
     def get_settings(self):
         return self.config
 
-    def __view_tile_fitter_settings(self, root):
+    def _view_fitter_settings(self, root):
         frame = tk.LabelFrame(root, text='Mosaic Fitter')
         frame.grid(row=1, column=0, pady=5, padx=5, sticky='enw')
         frame.columnconfigure(0, weight=0, minsize=100)
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=0)
+        frame.columnconfigure(3, weight=0)
         # select database
         tk.Label(frame, text='Database', anchor='w').grid(row=0, sticky='w', padx=5, pady=5)
         self.txtDatabasePath = tk.Label(frame, width=25, text=self.config['database_file'], anchor='e')
         self.txtDatabasePath.grid(row=0, column=1, sticky='ew')
-        tk.Button(frame, text='...', padx=5, command=self.__btn_select_database).grid(
+        tk.Button(frame, text='...', padx=5, command=self._btn_select_database).grid(
             row=0, column=2, sticky='w', padx=5
         )
         # select overlay image
         tk.Label(frame, text='Overlay image', anchor='w').grid(row=1, sticky='w', padx=5, pady=5)
         self.txtOverlayImagePath = tk.Label(frame, width=25, text=self.config['overlay_image_path'], anchor='e')
         self.txtOverlayImagePath.grid(row=1, column=1, sticky='ew')
-        tk.Button(frame, text='...', padx=5, command=self.__btn_select_overlay).grid(
+        tk.Button(frame, text='...', padx=5, command=self._btn_select_overlay).grid(
             row=1, column=2, sticky='w', padx=5
         )
         # tile multiplier
-        tk.Label(frame, text='Tile multiplier', anchor='w').grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        self.txtTileMultiplier = tk.Entry(frame)
-        self.txtTileMultiplier.insert(0, self.config['tile_multiplier'])
-        self.txtTileMultiplier.grid(row=2, column=1, sticky='ew')
+        tk.Label(frame, text='Grid size', anchor='w').grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        self.txtGridSize = tk.Entry(frame)
+        self.txtGridSize.insert(0, self.config['grid_size'])
+        self.txtGridSize.grid(row=2, column=1, sticky='ew')
+        self.txtGridSize.bind("<KeyRelease>", self._update_resolution)
+
+        # Add label to display image resolution
+        self.lblResolution = tk.Label(frame, text="Multiplier: 0, Resolution: 0 px")
+        self.lblResolution.grid(row=3, column=1, columnspan=2, sticky='w')
+        self._update_resolution()  # call it once to set the initial value
+
         # button to export/display image
         btn_frame = tk.Frame(frame)
         btn_frame.grid(row=5, column=0, columnspan=3)
-        tk.Button(btn_frame, text='Run Fitter', padx=10, command=self.__btn_create).grid(
+        tk.Button(btn_frame, text='Run Fitter', padx=10, command=self._btn_fitter).grid(
             row=0, column=0, padx=5, pady=5
         )
-        tk.Button(btn_frame, text='Show', padx=10, command=self.__btn_show).grid(row=0, column=1, padx=5, pady=5)
+        tk.Button(btn_frame, text='Show', padx=10, command=self._btn_show).grid(row=0, column=1, padx=5, pady=5)
 
-    def __view_image_settings(self, root):
+    def _update_resolution(self, *args):
+        try:
+            gridSize = int(self.txtGridSize.get())
+            width = int(gridSize * self.config['tile_max_width'])
+            tile_height = int(self.config['tile_max_width'] / ImageAspectRatio.from_string(self.config['tile_aspect_ratio']).to_float())
+            height = int(gridSize * tile_height)
+            self.lblResolution.config(text=f"Resolution: {width} x {height} px")
+        except ValueError:
+            self.lblResolution.config(text="Invalid grid size.")
+
+    def _view_image_settings(self, root):
         frame = tk.LabelFrame(root, text='Image Settings')
         frame.grid(row=2, column=0, pady=5, padx=5, sticky='enw')
         frame.columnconfigure(0, weight=0, minsize=100)
@@ -196,29 +217,29 @@ class ViewTileFitter:
         btn_frame = tk.Frame(frame)
         btn_frame.grid(row=3, column=0, columnspan=3)
         tk.Button(btn_frame, text='Apply', padx=10, command=self.__btn_update).grid(row=0, column=1, padx=5, pady=5)
-        tk.Button(btn_frame, text='Save as', padx=10, command=self.__btn_save_as).grid(row=0, column=2, padx=5, pady=5)
+        tk.Button(btn_frame, text='Save as', padx=10, command=self._btn_save_as).grid(row=0, column=2, padx=5, pady=5)
 
-    def __btn_create(self):
+    def _btn_fitter(self):
         if self.thread:
             if self.thread.is_alive():
                 logger.warning('Please wait until mosaic has been created')
                 return
         self.config['overlay_image_path'] = self.txtOverlayImagePath['text']
         self.config['database_file'] = self.txtDatabasePath['text']
-        self.config['tile_multiplier'] = int(self.txtTileMultiplier.get())
+        self.config['grid_size'] = int(self.txtGridSize.get())
 
-        self.tf = Mosaic.TileFitter(
+        self.tf = TileFitter(
             overlay_image_path=self.config['overlay_image_path'],
             database_file=self.config['database_file'],
             output_file_path=self.config['fitter_out_file'],
-            tile_multiplier=self.config['tile_multiplier'],
+            grid_size=self.config['grid_size'],
             overlay_alpha=0.0,
             dpi=300,
         )
         self.thread = threading.Thread(target=self.tf.run)
         self.thread.start()
 
-    def __show(self, path):
+    def _show(self, path):
         if self.thread:
             if self.thread.is_alive():
                 logging.warning('Please wait until mosaic has been created')
@@ -233,8 +254,8 @@ class ViewTileFitter:
         else:
             logging.warning('No image exist. Please create mosaic first.')
 
-    def __btn_show(self):
-        self.__show(self.config['fitter_out_file'])
+    def _btn_show(self):
+        self._show(self.config['fitter_out_file'])
 
     def __btn_update(self):
         try:
@@ -273,13 +294,13 @@ class ViewTileFitter:
                     self.config['overlay_out_file'],
                     dpi=(self.config['dpi'], self.config['dpi']),
                 )
-                self.__show(self.config['overlay_out_file'])
+                self._show(self.config['overlay_out_file'])
             else:
                 logger.warning('Please run fitter first')
         else:
             logger.error(f'Image does not exist under {self.config["fitter_out_file"]}. Please run fitter first')
 
-    def __btn_save_as(self):
+    def _btn_save_as(self):
         filepath = asksaveasfilename(filetypes=(('Image files', '*.jpg'), ('All files', '*.*')))
         if 0 == len(filepath):
             logging.error('Please select a valid filename')
@@ -295,7 +316,7 @@ class ViewTileFitter:
         else:
             logging.error('Please run first the mosaic fitter')
 
-    def __btn_select_database(self):
+    def _btn_select_database(self):
         selected_path = askopenfilename(
             initialdir=self.config['database_file'],
             filetypes=(('Database files', '*.p'), ('All files', '*.*')),
@@ -303,7 +324,7 @@ class ViewTileFitter:
         if len(selected_path):
             self.txtDatabasePath['text'] = selected_path
 
-    def __btn_select_overlay(self):
+    def _btn_select_overlay(self):
         selected_path = askopenfilename(
             initialdir=self.config['overlay_image_path'],
             filetypes=(('Image files', '*.jpg;*.png'), ('All files', '*.*')),
@@ -311,7 +332,7 @@ class ViewTileFitter:
         if len(selected_path):
             self.txtOverlayImagePath['text'] = selected_path
 
-    def __view_image_preview(self, root):
+    def _view_image_preview(self, root):
         self.image_frame = tk.LabelFrame(root, text='Mosaic Preview')
         self.image_frame.grid(row=0, column=1, pady=5, padx=5, sticky='ewns')
         self.image_frame.rowconfigure(0, weight=1)
@@ -365,8 +386,8 @@ class App:
     def __init__(self, root):
         self.root = root
         self.default_config_path = 'config.cfg'
-        self.config = self.__load_settings()
-        self.__init_main_window()
+        self.config = self._load_settings()
+        self._init_main_window()
         settings_view = ScrolledWindow.ScrolledWindow(self.root)
         self.view_database = ViewDatabase(settings_view.scrollwindow, self.config)
         self.view_tile_fitter = ViewTileFitter(self.root, settings_view.scrollwindow, self.config)
@@ -379,7 +400,7 @@ class App:
         with open(self.default_config_path, 'w') as file:
             return json.dump(self.config, file, indent=4, sort_keys=True)
 
-    def __load_settings(self):
+    def _load_settings(self):
         if os.path.isfile(self.default_config_path):
             with open(self.default_config_path, 'r') as file:
                 return json.load(file)
@@ -390,8 +411,8 @@ class App:
                 'width': 800,
                 'height': 600,
                 'image_dir': 'Please select directory',
-                'tile_size_ratio': '4:3 (1.333)',
-                'tile_multiplier': 50,
+                'tile_aspect_ratio': ImageAspectRatio.FOUR_THREE.value,
+                'grid_size': 50,
                 'dpi': 150,
                 'tile_max_width': 250,
                 'fitter_out_file': '_temp.jpg',
@@ -402,7 +423,7 @@ class App:
                 'overlay_out_file': '_tempOverlay.jpg',
             }
 
-    def __init_main_window(self):
+    def _init_main_window(self):
         self.root.title('MosaicMaker v0.1')
         width = self.config['width']
         height = self.config['height']

@@ -28,8 +28,6 @@ class CanvasImage:
         self.placeholder = placeholder
         self.__filter = filter  # Image.LANCZOS  # could be: NEAREST, BILINEAR, BICUBIC and LANCZOS
         Image.MAX_IMAGE_PIXELS = 1000000000  # suppress DecompressionBombError for the big image
-        self.__band_width = 1024  # width of the tile band
-        self.__huge_size = 14000  # define size of the huge image
         # Create ImageFrame in placeholder widget
         # Vertical and horizontal scrollbars for canvas
         hbar = AutoScrollbar(self.__imframe, orient='horizontal')

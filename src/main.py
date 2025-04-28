@@ -1,5 +1,6 @@
 import argparse
-from Mosaic import Mosaic
+from tile.database import TileDatabase
+from tile.fitter import TileFitter
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -8,7 +9,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--image_dir', help='Image directory for the mosaic')
     parser.add_argument(
         '-m',
-        '--tile_multiplier',
+        '--grid_size',
         default=20,
         help='How many tiles should be in one row/column',
     )
@@ -21,19 +22,19 @@ if __name__ == '__main__':
     parser.add_argument('--overlay_alpha', default=0.03, help='Overlay image')
 
     args = parser.parse_args()
-    db = Mosaic.TileDatabase(
-        image_dir=args.image_dir,
+    db = TileDatabase(
+        tile_dir=args.image_dir,
         database_file=args.database_file,
-        tile_size_ratio=args.tile_ratio,
-        tile_max_width=args.tile_width,
+        tile_ratio=args.tile_ratio,
+        tile_width=args.tile_width,
     )
     db.create()
 
-    tf = Mosaic.TileFitter(
+    tf = TileFitter(
         overlay_image_path=args.overlay_image_path,
         database_file=args.database_file,
         output_file_path=args.output_file_path,
-        tile_multiplier=args.tile_multiplier,
+        grid_size=args.grid_size,
         overlay_alpha=args.overlay_alpha,
         dpi=args.dpi,
     )

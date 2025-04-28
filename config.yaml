@@ -1,0 +1,13 @@
+database_file: "database.p"
+dpi: 150
+fitter_out_file: "_temp.jpg"
+grayscale_active: false
+height: 868
+image_dir: "C:/Users/manue/OneDrive/Documents/git/SimpleMosaic/tmp/images"
+overlay_alpha: 0.03
+overlay_image_path: "C:/Users/manue/OneDrive/Documents/git/SimpleMosaic/tmp/images/image-14.jpg"
+overlay_out_file: "_tempOverlay.jpg"
+tile_max_width: 250
+grid_size: 50
+tile_aspect_ratio: "4:3"
+width: 1067

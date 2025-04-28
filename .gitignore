@@ -130,5 +130,5 @@ dmypy.json
 
 tmp/
 temp/
-_temp.jpg
+_temp*
 database.p
