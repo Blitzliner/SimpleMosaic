@@ -59,51 +59,47 @@ class TileFitter:
         if not self._validate_inputs():
             return
         self._load_data()
-        overlay_img = self.__prepare_overlay_size()
-        if overlay_img is not None and self.db is not None:
-            db_rgb = TileDatabase.db_to_rgb_array(self.db)
-            template = self._get_tile_template(overlay_img)
-            # split up into different jobs
-            len_temp = template.shape[0]
-            len_db = db_rgb.shape[0]
-            multiplier = math.ceil(len_temp / len_db)
-            # method 1: increase database to same size of needed tile images
-            if self.grid_size > 60:
-                logging.warning('Processing could take a while or reduce tile multiplier!')
-            if multiplier > 1:
-                logging.warning(f'Not enough images in database. {len_db} exist but {len_temp} needed')
-                logging.info(f'Images are {multiplier} times repeated')
-                db_rgb_resized = np.stack([db_rgb for _ in range(multiplier)], axis=0).reshape(
-                    (db_rgb.shape[0] * multiplier, db_rgb.shape[1]))
-            cost = self.__calc_error_matrix(template, db_rgb_resized)
-            logging.info('Run linear sum assignment problem')
-            row_ind, col_ind = linear_sum_assignment(cost)
-
-            logging.info(f'Create image with best tiles {(self.grid_size * self.tile_size[0], self.grid_size * self.tile_size[1])}')
-            out = Image.new('RGB', (self.grid_size * self.tile_size[0], self.grid_size * self.tile_size[1]))
-            for idx, img_idx in zip(row_ind, col_ind):
-                col = idx % self.grid_size
-                row = idx // self.grid_size
-                row_px = col * self.tile_size[0]
-                col_px = row * self.tile_size[1]
-                tile_img = self.db.tiles[img_idx % len(db_rgb)].image
-                out.paste(tile_img, (row_px, col_px))
-           
-            logging.info(f'Overlay image with alpha of {self.overlay_alpha*100}%')
-            out = Image.blend(out, overlay_img, self.overlay_alpha)
-            logging.info(f'Save image under "{self.output_file_path}"')
-            out.save(self.output_file_path, dpi=(self.dpi, self.dpi))
-            logging.info('Finished')
-        else:
+        overlay_img = self._prepare_overlay_size()
+        if overlay_img is None or self.db is None:
             logging.error('Overlay Image can not be processed or database is corrupt')
+            return
+            
+        db_rgb = TileDatabase.db_to_rgb_array(self.db)
+        template = self._get_tile_template(overlay_img)
+        
+        len_temp = template.shape[0]
+        len_db = db_rgb.shape[0]
+        multiplier = math.ceil(len_temp / len_db)
+        # increase database to same size of needed tile images
+        if self.grid_size > 60:
+            logging.warning('Processing could take a while or reduce tile multiplier!')
+        if multiplier > 1:
+            logging.warning(f'Not enough images in database. {len_db} exist but {len_temp} needed')
+            logging.info(f'Images are {multiplier} times repeated')
+            db_rgb_resized = np.tile(db_rgb, (multiplier, 1))
+        cost = self._calc_error_matrix(template, db_rgb_resized)
+        logging.info('Run linear sum assignment problem')
+        row_ind, col_ind = linear_sum_assignment(cost)
 
-    def __calc_error_matrix(self, template, db_rgb):
-        shape_cost_matrix = (template.shape[0], db_rgb.shape[0])
-        cost_matrix = np.zeros(shape_cost_matrix)
-        logging.info(f'Create cost matrix with shape {shape_cost_matrix}')
-        for idx in range(template.shape[0]):
-            single_cost = np.sum((template[idx] - db_rgb) ** 2, axis=1)
-            cost_matrix[idx] = single_cost
+        logging.info(f'Create image with best tiles {(self.grid_size * self.tile_size[0], self.grid_size * self.tile_size[1])}')
+        out = Image.new('RGB', (self.grid_size * self.tile_size[0], self.grid_size * self.tile_size[1]))
+        for idx, img_idx in zip(row_ind, col_ind):
+            col = idx % self.grid_size
+            row = idx // self.grid_size
+            x_px = col * self.tile_size[0]
+            y_px = row * self.tile_size[1]
+            tile_img = self.db.tiles[img_idx % len(db_rgb)].image
+            out.paste(tile_img, (x_px, y_px))
+        
+        logging.info(f'Overlay image with alpha of {self.overlay_alpha*100}%')
+        out = Image.blend(out, overlay_img, self.overlay_alpha)
+        logging.info(f'Save image under "{self.output_file_path}"')
+        out.save(self.output_file_path, dpi=(self.dpi, self.dpi))
+        logging.info('Finished')
+
+    def _calc_error_matrix(self, template, db_rgb):
+        logging.info(f'Create cost matrix with shape ({template.shape[0]}, {db_rgb.shape[0]})')
+        cost_matrix = np.sum((template[:, np.newaxis, :] - db_rgb[np.newaxis, :, :]) ** 2, axis=2)
         return cost_matrix
 
     def _get_tile_template(self, image):
@@ -113,7 +109,7 @@ class TileFitter:
         tile_template = tile_template.reshape((s[0] * s[1], s[2]))
         return tile_template
 
-    def __prepare_overlay_size(self):
+    def _prepare_overlay_size(self):
         if os.path.isfile(self.overlay_image_path):
             short_name = '..' + self.overlay_image_path[-50:] if len(self.overlay_image_path) > 50 else self.overlay_image_path
             logging.info(f'Prepare overlay "{short_name}"')
@@ -146,4 +142,4 @@ class TileFitter:
             logging.error(f'Invalid overlay image path given: {self.overlay_image_path}')
 
     def get_overlay(self):
-        return self.__prepare_overlay_size()
+        return self._prepare_overlay_size()
